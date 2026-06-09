@@ -168,6 +168,13 @@ class SegmentModel(nn.Module):
 
     def forward(self, inputs, input_LocErrs, input_dts, input_mask,
                 input_isfirst, return_all=False):
+        device = next(self.parameters()).device
+        inputs         = inputs.to(device)
+        input_LocErrs  = input_LocErrs.to(device)
+        input_dts      = input_dts.to(device)
+        input_mask     = input_mask.to(device)
+        input_isfirst  = input_isfirst.to(device)
+
         # Reshape: (batch, track_len, nb_dims) → (track_len, 1, batch, 1, 1, nb_dims)
         reshaped   = inputs[:, None, :, None, None, :]
         transposed = reshaped.permute(2, 1, 0, 3, 4, 5)
@@ -299,15 +306,16 @@ def build_abrupt_directed_motion_changes_model(
 
         ts_exp = torch.exp(transition_shapes)
 
+        _dev = ts_exp.device
         new_ts = torch.cat(
-            (ts_exp, torch.ones(1, nb_states, dtype=dtype)), dim=0)
+            (ts_exp, torch.ones(1, nb_states, dtype=dtype, device=_dev)), dim=0)
         new_ts = torch.cat(
-            (new_ts, torch.ones(nb_states + 1, 1, dtype=dtype)), dim=1)
+            (new_ts, torch.ones(nb_states + 1, 1, dtype=dtype, device=_dev)), dim=1)
 
         mis_dwell = torch.tensor(
-            [0.9 / nb_states] * nb_states, dtype=dtype)
+            [0.9 / nb_states] * nb_states, dtype=dtype, device=_dev)
         mis_dwell = torch.cat(
-            (mis_dwell, torch.tensor([0.1], dtype=dtype)))[None]
+            (mis_dwell, torch.tensor([0.1], dtype=dtype, device=_dev)))[None]
 
         mis_rates = torch.log(
             1 - torch.exp(

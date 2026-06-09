@@ -444,7 +444,8 @@ def RNN_reccurence_formula(current_hidden_var_coefs,
 
     nb_gaussians = len(biases_cp)
     nb_hidden_variables = current_hidden_var_coefs_cp[0].shape[-1]
-    LC = torch.zeros(current_hidden_var_coefs_cp[0].shape[:2], dtype=dtype)
+    LC = torch.zeros(current_hidden_var_coefs_cp[0].shape[:2], dtype=dtype,
+                     device=current_hidden_var_coefs_cp[0].device)
 
     for f, s in zip(sequence_phase_1[0], sequence_phase_1[1]):
         coef_index, ID_1, ID_2 = s
@@ -507,7 +508,8 @@ def transition_RNN_reccurence_formula(current_hidden_var_coefs,
 
     nb_gaussians = len(biases_cp)
     nb_hidden_variables = current_hidden_var_coefs_cp[0].shape[-1]
-    LC = torch.zeros(current_hidden_var_coefs_cp[0].shape[:2], dtype=dtype)
+    LC = torch.zeros(current_hidden_var_coefs_cp[0].shape[:2], dtype=dtype,
+                     device=current_hidden_var_coefs_cp[0].device)
 
     for f, s in zip(transition_sequence[0], transition_sequence[1]):
         coef_index, ID_1, ID_2 = s

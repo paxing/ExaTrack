@@ -60,8 +60,9 @@ def constraint_function(all_params, all_initial_params, LocErrs, dts,
     # ------------------------------------------------------------------
     # Bookkeeping constants
     # ------------------------------------------------------------------
+    device                     = all_params.device
     nb_states                  = all_params.shape[0]
-    integration_variable_index = torch.tensor(1, dtype=torch.int32)
+    integration_variable_index = torch.tensor(1, dtype=torch.int32, device=device)
     nb_hidden_vars             = 2
     nb_obs_vars                = 1
     nb_transition_gaussians    = 1
@@ -81,7 +82,9 @@ def constraint_function(all_params, all_initial_params, LocErrs, dts,
     dts = dts.mean(dim=-1, keepdim=True)                            # (nb_tracks, track_len+1, 1)
     dts = dts.permute(1, 0, 2)                                      # (track_len+1, nb_tracks, 1)
 
-    reference_dt = torch.tensor(reference_dt, dtype=dtype) if not isinstance(reference_dt, torch.Tensor) else reference_dt.to(dtype)
+    reference_dt = (torch.tensor(reference_dt, dtype=dtype, device=device)
+                    if not isinstance(reference_dt, torch.Tensor)
+                    else reference_dt.to(dtype=dtype, device=device))
 
     track_len = LocErrs.shape[0]
     nb_tracks = LocErrs.shape[1]
@@ -131,7 +134,7 @@ def constraint_function(all_params, all_initial_params, LocErrs, dts,
     LocErr_b = LocErrs.expand(track_len, nb_tracks, nb_states) + 1e-20
 
     zeros = torch.zeros_like(LocErr_b)
-    tiny  = torch.full((track_len, nb_tracks, nb_states), 1e-15, dtype=dtype)
+    tiny  = torch.full((track_len, nb_tracks, nb_states), 1e-15, dtype=dtype, device=device)
 
     # ==================================================================
     # Recurrent hidden-variable coefficients
@@ -186,19 +189,19 @@ def constraint_function(all_params, all_initial_params, LocErrs, dts,
     # Unit-std / zero-bias scaffolding tensors
     # ==================================================================
     Gaussian_stds = torch.ones((track_len, nb_obs_vars + nb_hidden_vars,
-                                nb_tracks, nb_states, 1), dtype=dtype)
+                                nb_tracks, nb_states, 1), dtype=dtype, device=device)
     biases = torch.zeros((track_len, nb_obs_vars + nb_hidden_vars,
-                          nb_tracks, nb_states, nb_dims), dtype=dtype)
+                          nb_tracks, nb_states, nb_dims), dtype=dtype, device=device)
     initial_obs_vars      = torch.zeros((nb_hidden_vars,
-                                         nb_tracks, nb_states, nb_obs_vars), dtype=dtype)
+                                         nb_tracks, nb_states, nb_obs_vars), dtype=dtype, device=device)
     initial_Gaussian_stds = torch.ones((nb_hidden_vars,
-                                        nb_tracks, nb_states, 1), dtype=dtype)
+                                        nb_tracks, nb_states, 1), dtype=dtype, device=device)
     initial_biases        = torch.zeros((nb_transition_gaussians,
-                                         nb_tracks, nb_states, nb_dims), dtype=dtype)
+                                         nb_tracks, nb_states, nb_dims), dtype=dtype, device=device)
     transition_Gaussian_stds = torch.ones((track_len, nb_transition_gaussians,
-                                           nb_tracks, nb_states, 1), dtype=dtype)
+                                           nb_tracks, nb_states, 1), dtype=dtype, device=device)
     transition_biases = torch.zeros((track_len, nb_transition_gaussians,
-                                     nb_tracks, nb_states, nb_dims), dtype=dtype)
+                                     nb_tracks, nb_states, nb_dims), dtype=dtype, device=device)
 
     # Log normalising factors
     Log_factors = (- torch.log(LocErrs + 1e-20)
@@ -230,6 +233,7 @@ def transition_param_function(transition_shapes, transition_rates,
     and their constraints, similarly to how constraint_function defines the
     constraints of the states.
     """
+    device = transition_shapes.device
     nb_states = transition_shapes.shape[0]
     nb_time_points, nb_tracks = dts.shape
 
@@ -240,15 +244,15 @@ def transition_param_function(transition_shapes, transition_rates,
 
     new_transition_shapes = torch.cat(
         (transition_shapes,
-         torch.ones(1, nb_states, dtype=dtype)), dim=0)
+         torch.ones(1, nb_states, dtype=dtype, device=device)), dim=0)
     new_transition_shapes = torch.cat(
         (new_transition_shapes,
-         torch.ones(nb_states + 1, 1, dtype=dtype)), dim=1)
+         torch.ones(nb_states + 1, 1, dtype=dtype, device=device)), dim=1)
 
     mislinking_dwell_time = torch.tensor(
-        [0.9 / nb_states] * nb_states, dtype=dtype)
+        [0.9 / nb_states] * nb_states, dtype=dtype, device=device)
     mislinking_dwell_time = torch.cat((mislinking_dwell_time,
-                                        torch.tensor([0.1], dtype=dtype)), dim=0)
+                                        torch.tensor([0.1], dtype=dtype, device=device)), dim=0)
     mislinking_dwell_time = mislinking_dwell_time[None, None, None].expand(
         nb_time_points, nb_tracks, 1, nb_states + 1)
 

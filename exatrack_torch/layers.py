@@ -252,7 +252,7 @@ def RNN_cell(input_i, Prev_coefs, Prev_biases, LP, segment_len,
     Next_biases = torch.cat([transition_Next_biases, stable_Next_biases], dim=2)
     new_LP          = torch.cat([transition_LPs, stable_LPs], dim=1)
     current_segment_len = torch.cat(
-        [torch.ones((nb_tracks, nb_states), dtype=dtype),
+        [torch.ones((nb_tracks, nb_states), dtype=dtype, device=LP.device),
          stable_segment_len + dt_ratios[:, None]], dim=1)
     Next_states = torch.cat([transition_states, stable_states], dim=1)
 
@@ -357,9 +357,9 @@ class Initial_layer_constraints(nn.Module):
         self.constraint_function = constraint_function
         self.sequence_length = sequence_length
         self.max_linking_distance_val = max_linking_distance
-        self.vary_params = torch.tensor(vary_params, dtype=dtype)
-        self.vary_initial_params = torch.tensor(vary_initial_params, dtype=dtype)
-        self.vary_initial_fractions = torch.tensor(vary_initial_fractions, dtype=dtype)
+        self.register_buffer('vary_params', torch.tensor(vary_params, dtype=dtype))
+        self.register_buffer('vary_initial_params', torch.tensor(vary_initial_params, dtype=dtype))
+        self.register_buffer('vary_initial_fractions', torch.tensor(vary_initial_fractions, dtype=dtype))
         self.reference_dt = reference_dt
         self.carryover = carryover
         self.LocErr_type = LocErr_type
@@ -404,17 +404,17 @@ class Initial_layer_constraints(nn.Module):
             constraint_function,
             nb_gaussians, nb_hidden_vars, dtype)
 
-    def _init_carryover_buffers(self, nb_tracks, nb_hidden_vars_out):
+    def _init_carryover_buffers(self, nb_tracks, nb_hidden_vars_out, device):
         """Lazily register carryover buffers once we know the track batch size."""
         nb_sequences = self.sequence_length * (self.nb_states + 1)
         self.register_buffer('carryout_coefs',
             torch.zeros(nb_hidden_vars_out, nb_tracks, nb_sequences,
-                        nb_hidden_vars_out, dtype=dtype))
+                        nb_hidden_vars_out, dtype=dtype, device=device))
         self.register_buffer('carryout_biases',
             torch.zeros(nb_hidden_vars_out, nb_tracks, nb_sequences,
-                        nb_hidden_vars_out, dtype=dtype))
+                        nb_hidden_vars_out, dtype=dtype, device=device))
         self.register_buffer('carryout_LP',
-            torch.zeros(nb_tracks, nb_sequences, dtype=dtype))
+            torch.zeros(nb_tracks, nb_sequences, dtype=dtype, device=device))
         self.carryover_initialized = True
 
     def _apply_constraint(self, param):
@@ -454,14 +454,15 @@ class Initial_layer_constraints(nn.Module):
 
         # Add mislinking state
         max_linking_distance = self.max_linking_distance_param
+        _dev = param_vars.device
         param_vars = torch.cat(
             (param_vars,
              torch.stack([
                  param_vars[-1][0],
                  torch.log(max_linking_distance.to(dtype)),
-                 torch.tensor(-15., dtype=dtype),
-                 torch.log(torch.tensor(0.00001, dtype=dtype)),
-                 torch.tensor(0., dtype=dtype),
+                 torch.tensor(-15., dtype=dtype, device=_dev),
+                 torch.log(torch.tensor(0.00001, dtype=dtype, device=_dev)),
+                 torch.tensor(0., dtype=dtype, device=_dev),
              ]).unsqueeze(0)),
             dim=0)
         initial_param_vars = torch.cat(
@@ -496,7 +497,8 @@ class Initial_layer_constraints(nn.Module):
 
         current_initial_hidden_var_coefs = initial_hidden_var_coefs[..., :nb_hidden_vars]
         next_initial_hidden_var_coefs    = torch.zeros(
-            (nb_hidden_vars, nb_tracks, nb_states, nb_hidden_vars), dtype=dtype)
+            (nb_hidden_vars, nb_tracks, nb_states, nb_hidden_vars), dtype=dtype,
+            device=inputs.device)
 
         transition_hidden_var_coefs = transition_hidden_var_coefs / transition_Gaussian_stds
         transition_biases           = transition_biases           / transition_Gaussian_stds
@@ -547,7 +549,8 @@ class Initial_layer_constraints(nn.Module):
 
         # Initialize carryover buffers on first forward pass
         if self.carryover and not self.carryover_initialized:
-            self._init_carryover_buffers(nb_tracks, Next_coefs.shape[0])
+            self._init_carryover_buffers(nb_tracks, Next_coefs.shape[0],
+                                         device=inputs.device)
 
         initial_states = [
             Next_coefs, Next_biases, LP,
@@ -598,8 +601,12 @@ class Custom_RNN_layer(nn.Module):
             vary_transition_shapes = torch.ones(
                 torch.tensor(transition_shapes).shape, dtype=dtype)
 
-        self.vary_transition_shapes = vary_transition_shapes if isinstance(vary_transition_shapes, torch.Tensor) else torch.tensor(vary_transition_shapes, dtype=dtype)
-        self.vary_transition_rates  = vary_transition_rates  if isinstance(vary_transition_rates,  torch.Tensor) else torch.tensor(vary_transition_rates,  dtype=dtype)
+        self.register_buffer('vary_transition_shapes',
+            vary_transition_shapes if isinstance(vary_transition_shapes, torch.Tensor)
+            else torch.tensor(vary_transition_shapes, dtype=dtype))
+        self.register_buffer('vary_transition_rates',
+            vary_transition_rates if isinstance(vary_transition_rates, torch.Tensor)
+            else torch.tensor(vary_transition_rates, dtype=dtype))
 
         self.transition_rates = nn.Parameter(
             torch.tensor(transition_rates, dtype=dtype))
@@ -701,7 +708,8 @@ class Custom_RNN_layer(nn.Module):
         transition_mean_seq = transition_mean_full[1:, :, :nb_states ** 2]
         transition_var_seq  = transition_var_full[1:,  :, :nb_states ** 2]
 
-        segment_len     = torch.ones((nb_tracks, sequence_length * nb_states), dtype=dtype)
+        segment_len     = torch.ones((nb_tracks, sequence_length * nb_states), dtype=dtype,
+                                     device=inputs.device)
         gamma_dist_mean = transition_mean_full[0]
         gamma_dist_var  = transition_var_full[0]
 
@@ -715,7 +723,8 @@ class Custom_RNN_layer(nn.Module):
             gamma_dist_var  = (br_isfirst_2 * gamma_dist_var
                                + (1 - br_isfirst_2) * self.carryout_gamma_dist_var)
 
-        states_indices = torch.arange(nb_states * sequence_length, dtype=torch.int64) % nb_states
+        _dev = inputs.device
+        states_indices = torch.arange(nb_states * sequence_length, dtype=torch.int64, device=_dev) % nb_states
         states_indices = states_indices.unsqueeze(1).expand(-1, sequence_length)
         states = F.one_hot(states_indices, num_classes=nb_states).to(dtype)
         states = states.unsqueeze(0).expand(nb_tracks, -1, -1, -1)

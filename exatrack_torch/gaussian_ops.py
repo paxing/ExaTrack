@@ -57,8 +57,8 @@ def log_gaussian(top, variance=None):
     variance : tensor — σ², defaults to 1 (standard normal)
     """
     if variance is None:
-        variance = torch.tensor(1.0, dtype=dtype)
-    return -0.5 * torch.log(2 * torch.tensor(pi, dtype=dtype) * variance) - top ** 2 / (2 * variance)
+        variance = 1.0
+    return -0.5 * (np.log(2 * pi) + torch.log(torch.as_tensor(variance, dtype=dtype, device=top.device))) - top ** 2 / (2 * variance)
 
 
 def norm_log_gaussian(top):
@@ -67,7 +67,7 @@ def norm_log_gaussian(top):
 
         log f(z) = -0.5 * (log(2π) + z²)
     """
-    return -0.5 * (torch.log(torch.tensor(2 * pi, dtype=dtype)) + top ** 2)
+    return -0.5 * (np.log(2 * pi) + top ** 2)
 
 
 # ---------------------------------------------------------------------------
@@ -94,10 +94,8 @@ def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2,
     LogConstant, current_coefs3, current_coefs4,
     next_coefs3, next_coefs4, biases3, biases4
     """
-    C1 = (current_hidden_var_coefs_1[:, :, coef_index:coef_index + 1]
-          + torch.randn(1, 1, 1, dtype=dtype) * 1e-20)
-    C2 = (current_hidden_var_coefs_2[:, :, coef_index:coef_index + 1]
-          + torch.randn(1, 1, 1, dtype=dtype) * 1e-20)
+    C1 = (current_hidden_var_coefs_1[:, :, coef_index:coef_index + 1] + 1e-20)
+    C2 = (current_hidden_var_coefs_2[:, :, coef_index:coef_index + 1] + 1e-20)
 
     current_coefs1 = divide_no_nan(current_hidden_var_coefs_1, C1)
     current_coefs2 = divide_no_nan(current_hidden_var_coefs_2, C2)
@@ -106,8 +104,8 @@ def RNN_gaussian_product(current_hidden_var_coefs_1, current_hidden_var_coefs_2,
     biases1 = divide_no_nan(biases_1, C1)
     biases2 = divide_no_nan(biases_2, C2)
 
-    var1 = 1. / (C1 ** 2 + torch.randn(1, 1, 1, dtype=dtype) * 1e-100)
-    var2 = 1. / (C2 ** 2 + torch.randn(1, 1, 1, dtype=dtype) * 1e-100)
+    var1 = 1. / (C1 ** 2 + 1e-100)
+    var2 = 1. / (C2 ** 2 + 1e-100)
 
     var3 = var1 + var2
     std3 = var3 ** 0.5
