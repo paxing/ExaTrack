@@ -209,15 +209,24 @@ while True:
                   align="center", font=("courier", 24, "normal"))
 
     # --- Collisions ---
-    if (340 < ball.xcor() < 350
-            and paddle_b.ycor() - 40 < ball.ycor() + 40 < paddle_b.ycor() + 50):
-        ball.setx(340)
-        ball.dx *= -1
+    # Check: has the ball reached or crossed the paddle line while moving toward it?
+    # Using a crossed-line test instead of a narrow band prevents the ball from
+    # tunnelling through the paddle when it moves faster than the band is wide.
+    # Paddle half-height = stretch_wid(5) * 20px = 100px total → ±50 from centre.
+    # Ball radius ≈ 10px, so we add that to the overlap tolerance.
+    PADDLE_HALF = 60   # 50px paddle half-height + 10px ball radius
 
-    if (-350 < ball.xcor() < -340
-            and paddle_a.ycor() - 40 < ball.ycor() + 40 < paddle_a.ycor() + 50):
-        ball.setx(-340)
-        ball.dx *= -1
+    if ball.dx > 0 and ball.xcor() >= 340:   # moving right, reached bot paddle
+        if abs(ball.ycor() - paddle_b.ycor()) < PADDLE_HALF:
+            ball.setx(339)
+            ball.dx *= -1
+        # if missed, let the out-of-bounds check handle scoring
+
+    if ball.dx < 0 and ball.xcor() <= -340:  # moving left, reached player paddle
+        if abs(ball.ycor() - paddle_a.ycor()) < PADDLE_HALF:
+            ball.setx(-339)
+            ball.dx *= -1
+        # if missed, let the out-of-bounds check handle scoring
 
     # --- End condition ---
     if score_a >= WIN_SCORE or score_b >= WIN_SCORE:
